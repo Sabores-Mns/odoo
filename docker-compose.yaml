@@ -1,0 +1,71 @@
+services:
+  # Base de datos para Odoo
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=odoo
+      - POSTGRES_PASSWORD=odoo_password
+    volumes:
+      - odoo-db-data:/var/lib/postgresql/data
+    networks:
+      - odoo-network
+    restart: always
+
+  # Servidor Odoo
+  odoo:
+    image: odoo:17.0
+    depends_on:
+      - db
+    ports:
+      - "8069:8069"
+    environment:
+      - HOST=db
+      - USER=odoo
+      - PASSWORD=odoo_password
+    volumes:
+      - odoo-web-data:/var/lib/odoo
+      - ./config:/etc/odoo
+      - ./addons:/mnt/extra-addons
+    networks:
+      - odoo-network
+    restart: always
+
+  # Proxy Inverso Nginx
+  nginx:
+    image: nginx:latest
+    depends_on:
+      - odoo
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    # Nginx comparte la red y la IP de Tailscale directamente
+    network_mode: "service:tailscale"
+    restart: always
+
+  # Nodo de Tailscale
+  tailscale:
+    image: tailscale/tailscale:latest
+    hostname: odoo-secure-server
+    environment:
+      - TS_AUTHKEY=tskey-auth-kvygCE6FMA11CNTRL-p7Vza9s3urhNnSPqTYSMshuM4Vsvg489a
+      - TS_STATE_DIR=/var/lib/tailscale
+    volumes:
+      - tailscale-data:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - odoo-network
+    restart: always
+
+volumes:
+  odoo-db-data:
+  odoo-web-data:
+  tailscale-data:
+
+networks:
+  odoo-network:
+    driver: bridge
